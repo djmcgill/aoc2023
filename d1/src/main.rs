@@ -21,135 +21,198 @@ fn main() {
 
     let mut p2 = 0;
     let mut state_machine = TextParsingStateMachine::new();
-    let mut input = INPUT.into_iter();
 
-    while let Some(c) = input.next() {
-        loop {
-            let reset = state_machine.advance(*c);
-            match reset {
-                // we matched, but might still need the last digit
-                StateMachineResult::Match => {
-                    state_machine.buffer.clear();
-                    state_machine.advance(*c);
-                    break;
+    let mut i = 0;
+    while i < INPUT.len() {
+        match state_machine.advance(INPUT[i]) {
+            // we matched, but might still need the last digit so don't advance
+            StateMachineResult::MatchLetter => {
+                state_machine.parse_state = WordParseState::Empty;
+            }
+            // we matched, and don't need the last digit so DO advance
+            StateMachineResult::MatchDigit => {
+                state_machine.parse_state = WordParseState::Empty;
+                i += 1;
+            }
+            // we found something invalid, clear the buffer 1-by-1 until we match or exhaust the buffer
+            StateMachineResult::Fail => {
+                if let WordParseState::Empty = state_machine.parse_state {
+                    i += 1;
+                } else {
+                    state_machine.reverse();
                 }
-                // we found something invalid, clear the buffer 1-by-1 until we match or exhaust the buffer
-                StateMachineResult::Fail => {
-                    if state_machine.buffer.len() > 0 {
-                        state_machine.buffer.remove(0); // todo: remove(0) on vec is bad
-                                                        // continue;
-                    } else {
-                        break;
-                    }
-                }
-                // unclear, next digit
-                StateMachineResult::Inconclusive => {
-                    break;
-                }
-                StateMachineResult::Newline => {
-                    let first = state_machine.digits[0];
-                    let last = *state_machine.digits.last().unwrap_or(&first);
-                    // dbg!((first, last));
-                    p2 += (first * 10 + last) as u32;
-                    state_machine.buffer.clear();
-                    state_machine.digits.clear();
-                    break;
-                }
+            }
+            // unclear, next digit
+            StateMachineResult::Inconclusive => {
+                i += 1;
+            }
+            StateMachineResult::Newline => {
+                let first = state_machine.first.unwrap();
+                let last = state_machine.last.unwrap_or(first);
+                p2 += (first * 10 + last) as u32;
+                state_machine.parse_state = WordParseState::Empty;
+                state_machine.first = None;
+                state_machine.last = None;
+                i += 1;
             }
         }
     }
     let after_p2 = Instant::now();
     let time = after_p2 - before_p2;
 
-    // 255.7µs
+    // 165.9µs
     println!("p2: {p2} ({:#?})", time);
 }
 
+#[derive(Debug)]
 enum StateMachineResult {
     Inconclusive,
-    Match,
+    MatchLetter,
+    MatchDigit,
     Fail,
     Newline,
 }
 
 #[derive(Debug)]
 struct TextParsingStateMachine {
-    buffer: Vec<u8>,
-    digits: Vec<u8>,
+    parse_state: WordParseState,
+    first: Option<u8>,
+    last: Option<u8>,
 }
 impl TextParsingStateMachine {
     fn new() -> Self {
         Self {
-            buffer: Vec::with_capacity(4),
-            digits: Vec::with_capacity(2),
+            parse_state: WordParseState::Empty,
+            first: None,
+            last: None,
         }
     }
+    fn record_digit(&mut self, c: u8) {
+        if self.first.is_none() {
+            self.first = Some(c);
+        } else {
+            self.last = Some(c);
+        }
+    }
+
+    fn reverse(&mut self) {
+        // okay so in the buffer version, this would drop the head and turn "nin" into "in".
+        // But in this version, we're limited in how we _can_ drop the head. So only do it if
+        // it makes sense
+        self.parse_state = match self.parse_state {
+            WordParseState::On => WordParseState::N,
+            WordParseState::Thre => WordParseState::E,
+            WordParseState::Fo => WordParseState::O,
+            WordParseState::Se => WordParseState::E,
+            WordParseState::Seve => WordParseState::E,
+            WordParseState::Nin => WordParseState::N,
+            _ => WordParseState::Empty,
+        };
+    }
+
     fn advance(&mut self, c: u8) -> StateMachineResult {
-        match self.buffer[..] {
+        match self.parse_state {
             _ if c == b'\n' => {
                 return StateMachineResult::Newline;
             }
             _ if (b'1'..=b'9').contains(&c) => {
-                self.digits.push(c - b'0');
-                return StateMachineResult::Match;
+                self.record_digit(c - b'0');
+                return StateMachineResult::MatchDigit;
             }
-            [b'o', b'n'] if c == b'e' => {
-                self.digits.push(1);
-                return StateMachineResult::Match;
+            WordParseState::Empty if c == b'o' => self.parse_state = WordParseState::O,
+            WordParseState::Empty if c == b't' => self.parse_state = WordParseState::T,
+            WordParseState::Empty if c == b'f' => self.parse_state = WordParseState::F,
+            WordParseState::Empty if c == b's' => self.parse_state = WordParseState::S,
+            WordParseState::Empty if c == b'e' => self.parse_state = WordParseState::E,
+            WordParseState::Empty if c == b'n' => self.parse_state = WordParseState::N,
+
+            WordParseState::O if c == b'n' => self.parse_state = WordParseState::On,
+            WordParseState::T if c == b'w' => self.parse_state = WordParseState::Tw,
+            WordParseState::T if c == b'h' => self.parse_state = WordParseState::Th,
+            WordParseState::Th if c == b'r' => self.parse_state = WordParseState::Thr,
+            WordParseState::Thr if c == b'e' => self.parse_state = WordParseState::Thre,
+            WordParseState::F if c == b'o' => self.parse_state = WordParseState::Fo,
+            WordParseState::Fo if c == b'u' => self.parse_state = WordParseState::Fou,
+            WordParseState::F if c == b'i' => self.parse_state = WordParseState::Fi,
+            WordParseState::Fi if c == b'v' => self.parse_state = WordParseState::Fiv,
+            WordParseState::S if c == b'i' => self.parse_state = WordParseState::Si,
+            WordParseState::S if c == b'e' => self.parse_state = WordParseState::Se,
+            WordParseState::Se if c == b'v' => self.parse_state = WordParseState::Sev,
+            WordParseState::Sev if c == b'e' => self.parse_state = WordParseState::Seve,
+            WordParseState::E if c == b'i' => self.parse_state = WordParseState::Ei,
+            WordParseState::Ei if c == b'g' => self.parse_state = WordParseState::Eig,
+            WordParseState::Eig if c == b'h' => self.parse_state = WordParseState::Eigh,
+            WordParseState::N if c == b'i' => self.parse_state = WordParseState::Ni,
+            WordParseState::Ni if c == b'n' => self.parse_state = WordParseState::Nin,
+
+            WordParseState::On if c == b'e' => {
+                self.record_digit(1);
+                return StateMachineResult::MatchLetter;
             }
-            [b't', b'w'] if c == b'o' => {
-                self.digits.push(2);
-                return StateMachineResult::Match;
+            WordParseState::Tw if c == b'o' => {
+                self.record_digit(2);
+                return StateMachineResult::MatchLetter;
             }
-            [b't', b'h', b'r', b'e'] if c == b'e' => {
-                self.digits.push(3);
-                return StateMachineResult::Match;
+            WordParseState::Thre if c == b'e' => {
+                self.record_digit(3);
+                return StateMachineResult::MatchLetter;
             }
-            [b'f', b'o', b'u'] if c == b'r' => {
-                self.digits.push(4);
-                return StateMachineResult::Match;
+            WordParseState::Fou if c == b'r' => {
+                self.record_digit(4);
+                return StateMachineResult::MatchLetter;
             }
-            [b'f', b'i', b'v'] if c == b'e' => {
-                self.digits.push(5);
-                return StateMachineResult::Match;
+            WordParseState::Fiv if c == b'e' => {
+                self.record_digit(5);
+                return StateMachineResult::MatchLetter;
             }
-            [b's', b'i'] if c == b'x' => {
-                self.digits.push(6);
-                return StateMachineResult::Match;
+            WordParseState::Si if c == b'x' => {
+                self.record_digit(6);
+                return StateMachineResult::MatchLetter;
             }
-            [b's', b'e', b'v', b'e'] if c == b'n' => {
-                self.digits.push(7);
-                return StateMachineResult::Match;
+            WordParseState::Seve if c == b'n' => {
+                self.record_digit(7);
+                return StateMachineResult::MatchLetter;
             }
-            [b'e', b'i', b'g', b'h'] if c == b't' => {
-                self.digits.push(8);
-                return StateMachineResult::Match;
+            WordParseState::Eigh if c == b't' => {
+                self.record_digit(8);
+                return StateMachineResult::MatchLetter;
             }
-            [b'n', b'i', b'n'] if c == b'e' => {
-                self.digits.push(9);
-                return StateMachineResult::Match;
+            WordParseState::Nin if c == b'e' => {
+                self.record_digit(9);
+                return StateMachineResult::MatchLetter;
             }
 
-            [] if [b'o', b't', b'f', b's', b'e', b'n'].contains(&c) => {
-                self.buffer.push(c);
-            }
-            [b'o'] if c == b'n' => self.buffer.push(c),
-            [b't'] if c == b'w' || c == b'h' => self.buffer.push(c),
-            [b't', b'h'] if c == b'r' => self.buffer.push(c),
-            [b't', b'h', b'r'] if c == b'e' => self.buffer.push(c),
-            [b'f'] if c == b'o' || c == b'i' => self.buffer.push(c),
-            [b'f', b'o'] if c == b'u' => self.buffer.push(c),
-            [b'f', b'i'] if c == b'v' => self.buffer.push(c),
-            [b's'] if c == b'i' || c == b'e' => self.buffer.push(c),
-            [b's', b'e'] if c == b'v' => self.buffer.push(c),
-            [b's', b'e', b'v'] if c == b'e' => self.buffer.push(c),
-            [b'e'] if c == b'i' => self.buffer.push(c),
-            [b'e', b'i'] if c == b'g' => self.buffer.push(c),
-            [b'e', b'i', b'g'] if c == b'h' => self.buffer.push(c),
-            [b'n'] if c == b'i' => self.buffer.push(c),
-            [b'n', b'i'] if c == b'n' => self.buffer.push(c),
             _ => return StateMachineResult::Fail,
         }
         StateMachineResult::Inconclusive
     }
+}
+
+#[derive(Debug)]
+enum WordParseState {
+    Empty,
+    O,
+    On,
+    T,
+    Tw,
+    Th,
+    Thr,
+    Thre,
+    F,
+    Fo,
+    Fou,
+    Fi,
+    Fiv,
+    S,
+    Si,
+    Se,
+    Sev,
+    Seve,
+    E,
+    Ei,
+    Eig,
+    Eigh,
+    N,
+    Ni,
+    Nin,
 }
