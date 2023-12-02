@@ -1,26 +1,31 @@
-use std::{
-    cmp::max,
-    time::Instant,
-};
+use std::{cmp::max, time::Instant};
 
 // const INPUT: &[u8] = include_bytes!("../test.txt");
 const INPUT: &[u8] = include_bytes!("../real.txt");
 
 #[derive(Debug)]
 struct Game {
+    game_id: usize,
     max_red: u32,
     max_blue: u32,
     max_green: u32,
 }
 impl Game {
-    fn parse(mut input: &[u8]) -> (&[u8], Game) {
+    fn parse(mut input: &[u8], game_id: usize) -> (&[u8], Game) {
         let mut max_red = 0;
         let mut max_green = 0;
         let mut max_blue = 0;
 
-        input = &input[5..]; // drop 'Game '
-        input = skip_int(input); // games are in order
-        input = &input[2..]; // drop ': '
+        // drop 'Game '
+        // drop game number
+        // drop ': '
+        if game_id < 10 {
+            input = &input[5 + 1 + 2..];
+        } else if game_id < 100 {
+            input = &input[5 + 2 + 2..];
+        } else {
+            input = &input[5 + 3 + 2..];
+        }
 
         loop {
             let (input_, round) = Round::parse(input);
@@ -36,6 +41,7 @@ impl Game {
             input = &input[2..]; // drop '; '
         }
         let game = Game {
+            game_id,
             max_red,
             max_blue,
             max_green,
@@ -60,15 +66,22 @@ impl Round {
 
         loop {
             let (input_, int) = parse_int(input);
-            input = &input_[1..]; // drop ' '
-            let (input_, start_word) = parse_word(input);
-            input = input_;
-            match start_word {
-                b'b' => output.blue += int,
-                b'r' => output.red += int,
-                b'g' => output.green += int,
+            match input_[1] {
+                b'b' => {
+                    output.blue += int;
+                    input = &input_[5..];
+                }
+                b'r' => {
+                    output.red += int;
+                    input = &input_[4..];
+                }
+                b'g' => {
+                    output.green += int;
+                    input = &input_[6..];
+                }
                 _ => unreachable!(),
             }
+
             if input.is_empty() || input[0] != b',' {
                 break (input, output);
             } else {
@@ -89,24 +102,6 @@ fn parse_int(input: &[u8]) -> (&[u8], u32) {
 
     (&input[len..], ans)
 }
-fn skip_int(input: &[u8]) -> &[u8] {
-    let mut len = 0;
-
-    while (b'0'..=b'9').contains(&input[len]) {
-        len += 1;
-    }
-
-    &input[len..]
-}
-fn parse_word(input: &[u8]) -> (&[u8], u8) {
-    let mut len = 0;
-
-    while (b'a'..=b'z').contains(&input[len]) {
-        len += 1;
-    }
-
-    (&input[len..], input[0])
-}
 
 fn main() {
     let p1_start = Instant::now();
@@ -117,9 +112,11 @@ fn main() {
 
     let mut games = vec![];
     let mut input = INPUT;
+    let mut game_id = 1;
     while !input.is_empty() {
-        let (input_, game) = Game::parse(input);
+        let (input_, game) = Game::parse(input, game_id);
         games.push(game);
+        game_id += 1;
         input = &input_[1..]; // drop '\n'
     }
 
@@ -127,12 +124,15 @@ fn main() {
 
     let p1: usize = games
         .iter()
-        .enumerate()
-        .filter_map(|(n, game)| {
+        .filter_map(|game| {
             let pred = game.max_red <= red_limit
                 && game.max_blue <= blue_limit
                 && game.max_green <= green_limit;
-            guard(pred, n + 1)
+            if pred {
+                Some(game.game_id)
+            } else {
+                None
+            }
         })
         .sum();
 
@@ -149,15 +149,7 @@ fn main() {
 
     let p2_end = Instant::now();
     println!("bespoke p2: {p2}");
-    println!("parse: {:?}", parse_end - p1_start); // 24.2µs
+    println!("parse: {:?}", parse_end - p1_start); // 16.2µs
     println!("p1 no parse: {:?}", p1_end - parse_end); // 600ns
-    println!("p2 no parse: {:?}", p2_end - p2_start); // 200ns
-}
-
-fn guard<T>(b: bool, a: T) -> Option<T> {
-    if b {
-        Some(a)
-    } else {
-        None
-    }
+    println!("p2 no parse: {:?}", p2_end - p2_start); // 100ns
 }
