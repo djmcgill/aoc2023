@@ -112,13 +112,14 @@ impl TextParsingStateMachine {
 
     fn advance(&mut self, c: u8) -> StateMachineResult {
         match self.parse_state {
-            _ if c == b'\n' => {
-                return StateMachineResult::Newline;
-            }
             _ if (b'1'..=b'9').contains(&c) => {
                 self.record_digit(c - b'0');
                 return StateMachineResult::MatchDigit;
             }
+            _ if c == b'\n' => {
+                return StateMachineResult::Newline;
+            }
+
             WordParseState::Empty if c == b'o' => self.parse_state = WordParseState::O,
             WordParseState::Empty if c == b't' => self.parse_state = WordParseState::T,
             WordParseState::Empty if c == b'f' => self.parse_state = WordParseState::F,
@@ -129,20 +130,21 @@ impl TextParsingStateMachine {
             WordParseState::O if c == b'n' => self.parse_state = WordParseState::On,
             WordParseState::T if c == b'w' => self.parse_state = WordParseState::Tw,
             WordParseState::T if c == b'h' => self.parse_state = WordParseState::Th,
-            WordParseState::Th if c == b'r' => self.parse_state = WordParseState::Thr,
-            WordParseState::Thr if c == b'e' => self.parse_state = WordParseState::Thre,
             WordParseState::F if c == b'o' => self.parse_state = WordParseState::Fo,
-            WordParseState::Fo if c == b'u' => self.parse_state = WordParseState::Fou,
             WordParseState::F if c == b'i' => self.parse_state = WordParseState::Fi,
-            WordParseState::Fi if c == b'v' => self.parse_state = WordParseState::Fiv,
             WordParseState::S if c == b'i' => self.parse_state = WordParseState::Si,
             WordParseState::S if c == b'e' => self.parse_state = WordParseState::Se,
+            WordParseState::E if c == b'i' => self.parse_state = WordParseState::Ei,
+            WordParseState::N if c == b'i' => self.parse_state = WordParseState::Ni,
+
+            WordParseState::Th if c == b'r' => self.parse_state = WordParseState::Thr,
+            WordParseState::Thr if c == b'e' => self.parse_state = WordParseState::Thre,
+            WordParseState::Fo if c == b'u' => self.parse_state = WordParseState::Fou,
+            WordParseState::Fi if c == b'v' => self.parse_state = WordParseState::Fiv,
             WordParseState::Se if c == b'v' => self.parse_state = WordParseState::Sev,
             WordParseState::Sev if c == b'e' => self.parse_state = WordParseState::Seve,
-            WordParseState::E if c == b'i' => self.parse_state = WordParseState::Ei,
             WordParseState::Ei if c == b'g' => self.parse_state = WordParseState::Eig,
             WordParseState::Eig if c == b'h' => self.parse_state = WordParseState::Eigh,
-            WordParseState::N if c == b'i' => self.parse_state = WordParseState::Ni,
             WordParseState::Ni if c == b'n' => self.parse_state = WordParseState::Nin,
 
             WordParseState::On if c == b'e' => {
