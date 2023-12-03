@@ -1,5 +1,5 @@
 use fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use std::{ops::RangeInclusive, time::Instant};
+use std::{cell::RefCell, ops::RangeInclusive, rc::Rc, time::Instant};
 
 // const INPUT: &str = include_str!("../test.txt");
 const INPUT: &[u8] = include_bytes!("../real.txt");
@@ -10,25 +10,26 @@ struct Coord {
     x: usize,
     y: usize,
 }
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct Number {
     value: u32,
+    coord: Coord,
     len: usize,
 }
 
 #[derive(Debug)]
 struct Problem {
-    numbers: HashMap<Coord, Number>,
-    links: HashMap<Coord, Coord>,
+    numbers_grid: HashMap<Coord, Rc<RefCell<Number>>>,
+    numbers: Vec<Rc<RefCell<Number>>>,
     symbols: HashSet<Coord>,
     gears: Vec<Coord>,
 }
 impl Problem {
     fn parse(s: &[u8]) -> Self {
         let mut problem = Problem {
-            numbers: HashMap::default(),
+            numbers_grid: HashMap::default(),
+            numbers: Vec::new(),
             symbols: HashSet::default(),
-            links: HashMap::default(),
             gears: Vec::new(),
         };
         for (y, line) in s.split(|x| *x == b'\n').enumerate() {
@@ -36,34 +37,29 @@ impl Problem {
             for (x, c) in line.into_iter().enumerate() {
                 if (b'0'..=b'9').contains(&c) {
                     let value = c - b'0';
-                    match current_number {
+                    match &current_number {
                         None => {
-                            problem.links.insert(Coord { x, y }, Coord { x, y });
-                            current_number = Some((
-                                x,
-                                Number {
-                                    value: value as u32,
-                                    len: 1,
-                                },
-                            ));
+                            let rc_number = Rc::new(RefCell::new(Number {
+                                value: value as u32,
+                                len: 1,
+                                coord: Coord { x, y },
+                            }));
+
+                            current_number = Some(Rc::clone(&rc_number));
+                            problem.numbers_grid.insert(Coord { x, y }, rc_number);
                         }
-                        Some((old_start, old_number)) => {
-                            problem
-                                .links
-                                .insert(Coord { x, y }, Coord { x: old_start, y });
-                            current_number = Some((
-                                old_start,
-                                Number {
-                                    value: old_number.value * 10 + (value as u32),
-                                    len: old_number.len + 1,
-                                },
-                            ));
+                        Some(old_number) => {
+                            let rc_old_number = Rc::clone(&old_number);
+                            let mut r = (**old_number).borrow_mut();
+                            r.value *= 10;
+                            r.value += value as u32;
+                            r.len += 1;
+                            problem.numbers_grid.insert(Coord { x, y }, rc_old_number);
                         }
                     }
                 } else {
-                    if let Some((start, number)) = current_number {
-                        problem.numbers.insert(Coord { y, x: start }, number);
-                        current_number = None;
+                    if let Some(number) = current_number.take() {
+                        problem.numbers.push(number);
                     }
 
                     if *c != b'.' {
@@ -74,8 +70,8 @@ impl Problem {
                     }
                 }
             }
-            if let Some((start, number)) = current_number {
-                problem.numbers.insert(Coord { y, x: start }, number);
+            if let Some(number) = current_number.take() {
+                problem.numbers.push(number);
             }
         }
         problem
@@ -89,12 +85,12 @@ fn main() {
 
     let mut part_number_sum = 0;
 
-    'numbers: for (coord, number) in &problem.numbers {
-        for (y, xs) in neighbours((coord, number)) {
+    'numbers: for number in &problem.numbers {
+        for (y, xs) in neighbours(&*number.borrow()) {
             for x in xs {
                 if problem.symbols.contains(&Coord { x, y }) {
                     // println!("part number: {}", number.value);
-                    part_number_sum += number.value;
+                    part_number_sum += number.borrow().value;
                     continue 'numbers;
                 }
             }
@@ -118,15 +114,16 @@ fn main() {
                     } else {
                         let target_x = ((gear.x as isize) + dx) as usize;
                         let target_y = ((gear.y as isize) + dy) as usize;
-                        if let Some(source) = problem.links.get(&Coord {
+
+                        if let Some(number) = problem.numbers_grid.get(&Coord {
                             y: target_y,
                             x: target_x,
                         }) {
-                            let number = problem.numbers.get(source).unwrap();
+                            let number = (**number).borrow();
                             adjacent.push(number.value);
 
                             // how far through the number are we
-                            let number_progress = target_x - source.x;
+                            let number_progress = target_x - number.coord.x;
                             skip = number.len - number_progress;
                         }
                     }
@@ -143,82 +140,33 @@ fn main() {
 
     println!("p1: {part_number_sum}");
     println!("p2: {p2}");
-    println!("parse: {:?}", parse_end - start);
-    println!("p1: {:?}", p1_end - parse_end);
-    println!("p2: {:?}", p2_end - p1_end);
+    println!("parse: {:?}", parse_end - start); // 205.3µs
+    println!("p1: {:?}", p1_end - parse_end); // 83.5µs
+    println!("p2: {:?}", p2_end - p1_end); // 54.4µs
 }
 
-fn neighbours((coord, number): (&Coord, &Number)) -> Vec<(usize, RangeInclusive<usize>)> {
-    if coord.y != 0 {
-        if coord.x != 0 {
-            vec![
-                (coord.y - 1, coord.x - 1..=coord.x + number.len),
-                (coord.y, coord.x - 1..=coord.x - 1),
-                (coord.y, coord.x + number.len..=coord.x + number.len),
-                (coord.y + 1, coord.x - 1..=coord.x + number.len),
-            ]
-        } else {
-            vec![
-                (coord.y - 1, coord.x..=coord.x + number.len),
-                (coord.y, coord.x + number.len..=coord.x + number.len),
-                (coord.y + 1, coord.x..=coord.x + number.len),
-            ]
-        }
-    } else {
-        if coord.x != 0 {
-            vec![
-                (coord.y, coord.x - 1..=coord.x - 1),
-                (coord.y, coord.x + number.len..=coord.x + number.len),
-                (coord.y + 1, coord.x - 1..=coord.x + number.len),
-            ]
-        } else {
-            vec![
-                (coord.y, coord.x + number.len..=coord.x + number.len),
-                (coord.y + 1, coord.x..=coord.x + number.len),
-            ]
-        }
+fn neighbours(number: &Number) -> Vec<(usize, RangeInclusive<usize>)> {
+    let coord = number.coord;
+    match (coord.x, coord.y) {
+        (0, 0) => vec![
+            (coord.y, coord.x + number.len..=coord.x + number.len),
+            (coord.y + 1, coord.x..=coord.x + number.len),
+        ],
+        (0, _) => vec![
+            (coord.y - 1, coord.x..=coord.x + number.len),
+            (coord.y, coord.x + number.len..=coord.x + number.len),
+            (coord.y + 1, coord.x..=coord.x + number.len),
+        ],
+        (_, 0) => vec![
+            (coord.y, coord.x - 1..=coord.x - 1),
+            (coord.y, coord.x + number.len..=coord.x + number.len),
+            (coord.y + 1, coord.x - 1..=coord.x + number.len),
+        ],
+        _ => vec![
+            (coord.y - 1, coord.x - 1..=coord.x + number.len),
+            (coord.y, coord.x - 1..=coord.x - 1),
+            (coord.y, coord.x + number.len..=coord.x + number.len),
+            (coord.y + 1, coord.x - 1..=coord.x + number.len),
+        ],
     }
-
-    // let mut neighbours = vec![];
-    // // above
-    // if coord.y != 0 {
-    //     if coord.x != 0 {
-    //         neighbours.push(Coord {
-    //             x: coord.x - 1,
-    //             y: coord.y - 1,
-    //         });
-    //     }
-    //     for n in 0..=number.len {
-    //         neighbours.push(Coord {
-    //             x: coord.x + n,
-    //             y: coord.y - 1,
-    //         });
-    //     }
-    // }
-
-    // if coord.x != 0 {
-    //     neighbours.push(Coord {
-    //         x: coord.x - 1,
-    //         y: coord.y,
-    //     });
-    // }
-    // neighbours.push(Coord {
-    //     x: coord.x + number.len,
-    //     y: coord.y,
-    // });
-
-    // // below
-    // if coord.x != 0 {
-    //     neighbours.push(Coord {
-    //         x: coord.x - 1,
-    //         y: coord.y + 1,
-    //     });
-    // }
-    // for n in 0..=number.len {
-    //     neighbours.push(Coord {
-    //         x: coord.x + n,
-    //         y: coord.y + 1,
-    //     });
-    // }
-    // neighbours
 }
