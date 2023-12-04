@@ -37,6 +37,7 @@ impl Problem {
             for (x, c) in line.into_iter().enumerate() {
                 if (b'0'..=b'9').contains(&c) {
                     let value = c - b'0';
+
                     match &current_number {
                         None => {
                             let rc_number = Rc::new(RefCell::new(Number {
@@ -46,7 +47,10 @@ impl Problem {
                             }));
 
                             current_number = Some(Rc::clone(&rc_number));
-                            problem.numbers_grid.insert(Coord { x, y }, rc_number);
+                            problem
+                                .numbers_grid
+                                .insert(Coord { x, y }, Rc::clone(&rc_number));
+                            problem.numbers.push(rc_number)
                         }
                         Some(old_number) => {
                             let rc_old_number = Rc::clone(&old_number);
@@ -58,9 +62,7 @@ impl Problem {
                         }
                     }
                 } else {
-                    if let Some(number) = current_number.take() {
-                        problem.numbers.push(number);
-                    }
+                    current_number = None;
 
                     if *c != b'.' {
                         problem.symbols.insert(Coord { y, x });
@@ -69,9 +71,6 @@ impl Problem {
                         }
                     }
                 }
-            }
-            if let Some(number) = current_number.take() {
-                problem.numbers.push(number);
             }
         }
         problem
