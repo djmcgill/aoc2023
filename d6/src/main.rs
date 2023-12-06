@@ -62,6 +62,6 @@ fn main() {
 
     println!("p1: {p1}");
     println!("p2: {p2}");
-    println!("p1: {:?}", p1_end - start);
-    println!("p2: {:?}", p2_end - p1_end);
+    println!("p1: {:?}", p1_end - start); // 1.7us
+    println!("p2: {:?}", p2_end - p1_end); // 0ns lol
 }
