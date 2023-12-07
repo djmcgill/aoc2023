@@ -128,6 +128,26 @@ impl HandType {
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Hand<C>(HandType, Vec<C>, usize);
+impl<C: Clone> Hand<C> {
+    fn parse(
+        line: &str,
+        parse_card: &impl Fn(char) -> C,
+        identify: &impl Fn(Vec<C>) -> HandType,
+    ) -> Self {
+        // TODO: parse fixed length u8 windows
+        let mut sections = line.split_ascii_whitespace();
+        let hand = sections
+            .next()
+            .unwrap()
+            .chars()
+            .map(|c| parse_card(c))
+            .collect::<Vec<_>>();
+
+        let rank = identify(hand.clone());
+        let bid = usize::from_str_radix(sections.next().unwrap(), 10).unwrap();
+        Hand(rank, hand, bid)
+    }
+}
 
 fn main() {
     let start = Instant::now();
@@ -148,20 +168,7 @@ fn solve<C: Clone + Ord>(
 ) -> usize {
     let mut ret = s
         .lines()
-        .map(move |line| {
-            // TODO: parse fixed length u8 windows
-            let mut sections = line.split_ascii_whitespace();
-            let hand = sections
-                .next()
-                .unwrap()
-                .chars()
-                .map(|c| parse(c))
-                .collect::<Vec<_>>();
-
-            let rank = identify(hand.clone());
-            let bid = usize::from_str_radix(sections.next().unwrap(), 10).unwrap();
-            Hand(rank, hand, bid)
-        })
+        .map(move |line| Hand::parse(line, &parse, &identify))
         .collect::<Vec<_>>();
     // TODO: there's a lot of back and forth between vec and iter here
     ret.sort_by(|x, y| x.cmp(&y).reverse());
