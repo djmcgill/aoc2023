@@ -19,6 +19,17 @@ name = "d1"
 version = "0.1.0"
 
 [[package]]
+name = "d10"
+version = "0.1.0"
+
+[[package]]
+name = "d11"
+version = "0.1.0"
+dependencies = [
+ "fxhash",
+]
+
+[[package]]
 name = "d2"
 version = "0.1.0"
 
