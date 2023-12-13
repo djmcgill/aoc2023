@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{cmp::min, time::Instant};
 
 // const INPUT: &[u8] = include_bytes!("../test.txt");
 const INPUT: &[u8] = include_bytes!("../real.txt");
@@ -51,26 +51,25 @@ fn main() {
 }
 
 fn check_for_y_p1(grid: &[&'static [u8]]) -> Option<usize> {
-    (0..grid.len() - 1).find(|y| {
+    (0..grid.len() - 1).find(|&y| {
         // okay so for each y, is this line a horizontal mirror.
         // where y is the start of the reflection
 
-        let mut dist_from_center = 0;
-        loop {
-            if grid[y - dist_from_center] == grid[y + dist_from_center + 1] {
-                // this row is fine check the next one
-                if y - dist_from_center == 0 || y + dist_from_center + 1 >= grid.len() - 1 {
-                    // index from 1
-                    return true;
+        (0..=min(y, grid.len() - y))
+            .find_map(|dist_from_center| {
+                if grid[y - dist_from_center] == grid[y + dist_from_center + 1] {
+                    // this row is fine check the next one
+                    if y - dist_from_center == 0 || y + dist_from_center + 1 >= grid.len() - 1 {
+                        Some(true)
+                    } else {
+                        None
+                    }
                 } else {
-                    dist_from_center += 1;
+                    // we know this is wrong
+                    Some(false)
                 }
-            } else {
-                // we know this is wrong
-                break;
-            }
-        }
-        false
+            })
+            .unwrap()
     })
 }
 
